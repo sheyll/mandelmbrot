@@ -1,13 +1,17 @@
 module Main exposing (main)
 
+import AnimationFrame
 import Collage exposing (..)
 import Color exposing (..)
 import Element exposing (..)
 import Html
-import Task
+import Html.Attributes
+import Html.Events
 import List exposing (..)
+import Mouse
+import Task
 import Time exposing (..)
-import AnimationFrame
+import Window
 
 
 -- import Signal exposing (..)
@@ -60,24 +64,34 @@ rotateLeftC ( r, i ) =
     ( -i, r )
 
 
+liveTimeFactorInside : Float
+liveTimeFactorInside =
+    2 / velocity
+
+
+liveTimeFactorOutside : Float
+liveTimeFactorOutside =
+    0.3 / velocity
+
+
 maxItersPreview : number
 maxItersPreview =
-    4
+    10
 
 
-maxItersSelection : number
+maxItersSelection : Int
 maxItersSelection =
-    40
+    50
 
 
-maxSelection : number
-maxSelection =
-    12
+maxPoints : Int
+maxPoints =
+    240
 
 
 velocity : Float
 velocity =
-    3 / second
+    1.8 / second
 
 
 type alias MandelTrace =
@@ -117,17 +131,14 @@ toMLines points =
         foldl toMLine_ ( 0, [] ) ls
 
 
-mlinesLength : List MLine -> Float
-mlinesLength =
-    sum << List.map (\l -> l.length)
-
-
 type alias AnimatedTrace =
     { lines : List MLine
     , c : Complex
     , zlast : Complex
     , age : Time
     , ttl : Time
+    , inside : Bool
+    , color : ( Float, Float, Float )
     }
 
 
@@ -137,7 +148,8 @@ type alias St =
     , offset : Complex
     , r_range : Complex
     , i_range : Complex
-    , preview : MandelTrace
+    , preview : ( Float, MandelTrace )
+    , previewActive : Bool
     , ds : DeviceState
     }
 
@@ -145,15 +157,25 @@ type alias St =
 initialSt : ( St, Cmd UserInput )
 initialSt =
     ( { traces = []
-      , zoom = 1.0
+      , zoom = 1
       , offset = ( 0, 0 )
       , r_range = ( -2, 2 )
       , i_range = ( -2, 2 )
-      , preview = []
+      , preview = ( 0.0, [] )
+      , previewActive = False
       , ds = deviceStateFromScreen { width = 100, height = 100 }
       }
     , Task.perform WindowResize Window.size
     )
+
+
+zoomTo : Float -> St -> St
+zoomTo zoom st =
+    { st
+        | zoom = zoom
+        , r_range = ( -2 / zoom, 2 / zoom )
+        , i_range = ( -2 / zoom, 2 / zoom )
+    }
 
 
 type alias DeviceState =
@@ -204,23 +226,20 @@ deviceStateFromScreen ws =
         }
 
 
-outOfMandelbrot : Int -> Complex -> MandelTrace -> MandelTrace
-outOfMandelbrot iters c zs =
-    case zs of
-        [] ->
-            []
-
-        z :: _ ->
-            if absC z >= 2.0 then
-                zs
-            else if iters == 0 then
+outOfMandelbrot : Int -> Complex -> MandelTrace
+outOfMandelbrot itersMax c =
+    let
+        outOfMandelbrotAcc iters z zs =
+            if absC z >= 2.0 || iters == 0 then
                 zs
             else
                 let
                     z_ =
                         addC (mulC z z) c
                 in
-                    outOfMandelbrot (iters - 1) c (z_ :: zs)
+                    outOfMandelbrotAcc (iters - 1) z_ (z_ :: zs)
+    in
+        outOfMandelbrotAcc itersMax c [ c ]
 
 
 scale : ( Float, Float ) -> ( Float, Float ) -> Float -> Float
@@ -256,14 +275,33 @@ update ui st =
     let
         st_ =
             case ui of
+                ZoomIn ->
+                    zoomTo (st.zoom * 1.2) st
+
+                ZoomReset ->
+                    zoomTo 1.0 st
+
+                ZoomOut ->
+                    zoomTo (max 0.75 (st.zoom / 1.2)) st
+
                 WindowResize window ->
                     { st | ds = deviceStateFromScreen window }
 
+                EnablePreview mouse ->
+                    preview mouse { st | previewActive = True }
+
                 Preview mouse ->
-                    preview mouse st
+                    if st.previewActive then
+                        preview mouse st
+                    else
+                        st
 
                 Select mouse ->
-                    select mouse st
+                    select mouse
+                        { st
+                            | previewActive = False
+                            , preview = ( 0.0, [] )
+                        }
 
                 Animate delta ->
                     animate delta st
@@ -277,7 +315,39 @@ preview mouse st =
         start =
             mouseToMandel mouse st
     in
-        { st | preview = outOfMandelbrot maxItersPreview start [ start ] }
+        { st
+            | preview =
+                ( getBaseColor start st.r_range
+                , outOfMandelbrot maxItersPreview start
+                )
+        }
+
+
+totalPoints : St -> Int
+totalPoints st =
+    List.foldr
+        (\t s -> s + List.length t.lines)
+        0
+        st.traces
+
+
+timeToNextTraceDeath : St -> Float
+timeToNextTraceDeath st =
+    List.foldr
+        (\t d ->
+            let
+                d_ =
+                    t.ttl - t.age
+            in
+                if d <= 0.0 then
+                    d_
+                else if d_ <= 0.0 then
+                    d
+                else
+                    min d d_
+        )
+        0.0
+        st.traces
 
 
 select : Mouse.Position -> St -> St
@@ -286,8 +356,11 @@ select mouse st =
         selection =
             mouseToMandel mouse st
 
+        maxIters =
+            min maxItersSelection (maxPoints - totalPoints st)
+
         traceRev =
-            outOfMandelbrot maxItersSelection selection [ selection ]
+            outOfMandelbrot maxIters selection
 
         trace =
             reverse traceRev
@@ -309,14 +382,21 @@ select mouse st =
                             inside =
                                 absC lastTrace <= 2.0
 
-                            ttlFactor =
-                                if inside then
-                                    10
-                                else
-                                    1
+                            mlinesLength =
+                                sum << List.map (\l -> l.length)
 
                             ttl =
-                                (totalLength * ttlFactor) / velocity
+                                (if inside then
+                                    liveTimeFactorInside
+                                 else
+                                    liveTimeFactorOutside
+                                )
+                                    * mlinesLength mlines
+
+                            sat =
+                                scale ( 0, toFloat maxItersSelection )
+                                    ( 0.3, 0.8 )
+                                    (toFloat (length mlines))
 
                             animatedTrace =
                                 { lines = mlines
@@ -324,30 +404,43 @@ select mouse st =
                                 , age = 0
                                 , c = selection
                                 , zlast = lastTrace
+                                , inside = inside
+                                , color = ( getBaseColor selection st.r_range, sat, 0.5 )
                                 }
                         in
                             { st
-                                | traces = (animatedTrace :: take (maxSelection - 1) st.traces)
-                                , preview = []
+                                | traces =
+                                    animatedTrace :: st.traces
                             }
+
+
+getBaseColor : ( Float, Float ) -> ( Float, Float ) -> Float
+getBaseColor z r_range =
+    let
+        hue =
+            scale r_range ( 400, 1500 ) (absC z)
+    in
+        degrees hue
 
 
 animate : Time -> St -> St
 animate dt st =
     let
-        age_updated st =
-            { st | traces = List.map (increaseAge dt) st.traces }
+        updateAge st =
+            let
+                increaseAge dt t =
+                    { t | age = t.age + dt }
+            in
+                { st | traces = List.map (increaseAge dt) st.traces }
 
-        increaseAge dt t =
-            { t | age = t.age + dt }
-
-        old_removed st =
-            { st | traces = List.filter hasTTL st.traces }
-
-        hasTTL t =
-            t.ttl > t.age
+        removeOld st =
+            let
+                isAlive t =
+                    t.ttl > t.age
+            in
+                { st | traces = List.filter isAlive st.traces }
     in
-        old_removed (age_updated st)
+        removeOld (updateAge st)
 
 
 
@@ -356,46 +449,88 @@ animate dt st =
 
 render : St -> Html.Html UserInput
 render st =
-    Element.toHtml <|
-        let
-            diagrams =
-                collage st.ds.screen_w
-                    st.ds.screen_h
-                    (renderPreview st ++ renderSelection st)
-
-            debugInfo =
-                show st
-
-            minScreenRange =
-                if st.ds.screen_w < st.ds.screen_h then
-                    st.ds.screen_w_range
-                else
-                    st.ds.screen_h_range
-
-            domainCircle =
-                collage st.ds.screen_w
-                    st.ds.screen_h
-                    [ filled black <|
-                        circle <|
-                            scale ( 0, 1 / st.zoom ) minScreenRange 1.0
-                    ]
-        in
-            layers
-                [ domainCircle
-
-                -- , debugInfo
-                , diagrams
+    Html.div []
+        [ Html.div
+            [ Html.Attributes.style
+                [ ( "position", "absolute" )
+                , ( "color", "gray" )
+                , ( "z-index", "2" )
                 ]
+            ]
+            [ Html.table []
+                [ Html.tr []
+                    [ Html.td []
+                        [ Html.text "Total Points" ]
+                    , Html.td
+                        []
+                        [ Html.text
+                            (toString (totalPoints st)
+                                ++ "/"
+                                ++ toString maxPoints
+                            )
+                        ]
+                    ]
+                , Html.tr []
+                    [ Html.td []
+                        [ Html.text " Time till next cleanup" ]
+                    , Html.td
+                        []
+                        [ Html.text
+                            (toString (round (timeToNextTraceDeath st)))
+                        ]
+                    ]
+                , Html.tr []
+                    [ Html.td []
+                        [ Html.text "Zoom" ]
+                    , Html.td
+                        []
+                        [ Html.text (toString st.zoom)
+                        ]
+                    ]
+                ]
+            , Html.div []
+                [ Html.button [ Html.Events.onClick ZoomIn ] [ Html.text "+" ]
+                , Html.button [ Html.Events.onClick ZoomReset ] [ Html.text "1.0" ]
+                , Html.button [ Html.Events.onClick ZoomOut ] [ Html.text "-" ]
+                ]
+            ]
+        , Element.toHtml <|
+            let
+                diagrams =
+                    collage st.ds.screen_w
+                        st.ds.screen_h
+                        (renderPreview st ++ renderSelection st)
+
+                --show st
+                minScreenRange =
+                    if st.ds.screen_w < st.ds.screen_h then
+                        st.ds.screen_w_range
+                    else
+                        st.ds.screen_h_range
+
+                domainCircle =
+                    collage st.ds.screen_w
+                        st.ds.screen_h
+                        [ filled black <|
+                            circle <|
+                                scale ( 0, 1 / st.zoom ) minScreenRange 1.0
+                        ]
+            in
+                layers
+                    [ domainCircle
+                    , diagrams
+                    ]
+        ]
 
 
 renderPreview : St -> List Form
 renderPreview st =
     let
-        zs =
+        ( hue, zs ) =
             st.preview
 
         lineStyle =
-            dashed charcoal
+            dashed (Color.hsla hue 0.7 0.7 0.5)
     in
         [ traced lineStyle <| path <| List.map (mandelToScreen st) zs ]
 
@@ -407,30 +542,14 @@ renderSelection st =
 
 renderAnimatedMandelTrace : St -> AnimatedTrace -> List Form
 renderAnimatedMandelTrace st t =
+    concatMap (renderMLine st t.age t.inside t.color) t.lines
+
+
+renderMLine : St -> Float -> Bool -> ( Float, Float, Float ) -> MLine -> List Form
+renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
     let
-        ( cr, ci ) =
-            t.c
-
-        hue =
-            scale st.r_range ( 0, 720 ) (absC t.zlast)
-
-        sat =
-            scale ( 0, toFloat maxItersSelection ) ( 0.1, 0.7 ) (toFloat (List.length t.lines))
-
-        baseColor =
-            ( degrees hue, sat, 0.5 )
-    in
-        concatMap (renderMLine st t.age baseColor) t.lines
-
-
-renderMLine : St -> Float -> ( Float, Float, Float ) -> MLine -> List Form
-renderMLine st age ( hue, sat, lum ) l =
-    let
-        animDist =
-            age * velocity
-
         glow =
-            (animDist - l.distance) / l.length
+            (age * velocity - l.distance) / l.length
 
         glowing =
             glow > 0 && glow < 1
@@ -439,48 +558,41 @@ renderMLine st age ( hue, sat, lum ) l =
             glow <= 0
 
         coolingDown =
-            glow >= 1 && glow < 10
+            glow >= 1 && glow < 5
 
         cool =
-            glow >= 10
+            glow >= 5
 
-        from_ =
+        screenFrom =
             mandelToScreen st l.from
 
-        to_ =
+        screenTo =
             mandelToScreen st l.to
 
-        length_ =
-            distC to_ from_
+        screenLength =
+            distC screenTo screenFrom
 
-        glowHill =
-            let
-                x =
-                    2 * glow - 1
-            in
-                1 - (x * x)
-
-        glowLog2 =
-            logBase 2 (glow + 1)
-
-        currentSat =
+        heat =
             if glowing then
-                glowHill * (1 - sat) + sat
+                1
+            else if coolingDown || cool then
+                1 / logBase 2 (glow + 1)
+            else if warmingUp then
+                -1 / (glow - 1)
             else
-                sat
+                0
 
-        currentColor =
-            hsla hue currentSat lum <|
-                if glowing then
-                    1
-                else if coolingDown then
-                    1 / glow
-                else if cool then
-                    0.2
-                else if warmingUp then
-                    0.5
-                else
-                    0
+        lineColor =
+            let
+                intensity =
+                    if warmingUp then
+                        0.8 * heat + 0.2
+                    else if (coolingDown || cool) && glow <= 2 then
+                        heat
+                    else
+                        heat
+            in
+                hsla hue sat lum intensity
 
         drawLine c f t =
             traced (solid c) <| path [ f, t ]
@@ -488,80 +600,82 @@ renderMLine st age ( hue, sat, lum ) l =
         drawCircle style radius =
             let
                 pos =
-                    addC from_ (scaleC glow (subC to_ from_))
+                    addC screenFrom (scaleC glow (subC screenTo screenFrom))
             in
                 move pos <| style <| circle radius
 
         drawMarkerCircle =
             let
                 radius =
-                    length_ / st.ds.screen_diag * 30
+                    st.ds.screen_diag / 350
 
                 style =
-                    filled currentColor
+                    filled lineColor
             in
                 drawCircle style radius
 
         drawMarkerCircleShadow =
-            let
-                radius =
-                    if glowing then
-                        length_ / 4 * glowLog2
-                    else if warmingUp then
-                        0
-                    else
-                        length_ / 4
+            if insideMandelbrot then
+                let
+                    radius =
+                        if glowing then
+                            screenLength / 4 * heat
+                        else if warmingUp then
+                            0
+                        else
+                            screenLength / 4
 
-                alpha =
-                    if cool then
-                        1 / glow
-                    else if warmingUp then
-                        0.1
-                    else
-                        0.2
+                    alpha =
+                        0.4 - 0.2 * heat
 
-                style =
-                    filled <| hsla hue sat lum 0.2
-            in
-                drawCircle style radius
+                    style =
+                        filled <| hsla hue sat lum alpha
+                in
+                    [ drawCircle style radius ]
+            else
+                []
     in
         if warmingUp then
-            [ drawLine currentColor from_ to_ ]
+            [ drawLine lineColor screenFrom screenTo ]
         else if glowing then
             let
                 shadowDistance =
-                    0.01 * glowLog2 * st.ds.screen_diag
+                    0.01 * l.length * glow * st.ds.screen_diag
 
                 ortho =
-                    scaleC shadowDistance <| normalizeC <| rotateLeftC <| subC to_ from_
+                    scaleC shadowDistance <| normalizeC <| rotateLeftC <| subC screenTo screenFrom
 
                 fromShadowAbove =
-                    addC from_ ortho
+                    addC screenFrom ortho
 
                 toShadowAbove =
-                    addC to_ ortho
+                    addC screenTo ortho
 
                 fromShadowBelow =
-                    subC from_ ortho
+                    subC screenFrom ortho
 
                 toShadowBelow =
-                    subC to_ ortho
+                    subC screenTo ortho
 
                 shadowColor =
-                    hsla hue (sat / 2) lum (0.5 - 0.5 * glowLog2)
+                    hsla hue
+                        (sat / 2)
+                        lum
+                        (0.75 - 0.75 * glow)
             in
-                [ drawLine currentColor from_ to_
+                [ drawLine lineColor screenFrom screenTo
                 , drawLine shadowColor fromShadowAbove toShadowAbove
                 , drawLine shadowColor fromShadowBelow toShadowBelow
                 , drawMarkerCircle
-                , drawMarkerCircleShadow
                 ]
         else if coolingDown then
-            [ drawLine currentColor from_ to_
-            , drawMarkerCircleShadow
+            [ drawLine lineColor screenFrom screenTo
             ]
+                ++ drawMarkerCircleShadow
         else if cool then
-            [ drawLine currentColor from_ to_ ]
+            [ drawLine lineColor screenFrom screenTo
+            ]
+                ++ drawMarkerCircleShadow
         else
             []
 
@@ -572,16 +686,21 @@ renderMLine st age ( hue, sat, lum ) l =
 
 type UserInput
     = Preview Mouse.Position
+    | EnablePreview Mouse.Position
     | Select Mouse.Position
     | Animate Time
     | WindowResize Window.Size
+    | ZoomIn
+    | ZoomReset
+    | ZoomOut
 
 
 subscriptions : St -> Sub UserInput
 subscriptions _ =
     Sub.batch
-        [ Mouse.clicks Select
+        [ Mouse.ups Select
         , Mouse.moves Preview
+        , Mouse.downs EnablePreview
         , Window.resizes WindowResize
         , AnimationFrame.diffs Animate
         ]
@@ -599,8 +718,3 @@ main =
         , subscriptions = subscriptions
         , view = render
         }
-
-
-
--- main =
---     Signal.map2 render deviceState <| foldp update initialSt input
