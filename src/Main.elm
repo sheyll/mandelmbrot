@@ -1,104 +1,131 @@
 module Main exposing (main)
 
 import AnimationFrame
+import Html
+import Mouse
+import Task
+import Window
+import Html.Attributes
+import Html.Events
 import Collage exposing (..)
 import Color exposing (..)
 import Element exposing (..)
-import Html
-import Html.Attributes
-import Html.Events
 import List exposing (..)
-import Mouse
-import Task
 import Time exposing (..)
-import Window
 
 
--- import Signal exposing (..)
-
-import Mouse
-import Window
+-- MATH
 
 
 type alias Complex =
     ( Float, Float )
 
 
-addC : ( number, number1 ) -> ( number, number1 ) -> ( number, number1 )
+type alias Path =
+    List Complex
+
+
+type alias Line =
+    ( Complex, Complex )
+
+
+addC : Complex -> Complex -> Complex
 addC ( r1, i1 ) ( r2, i2 ) =
     ( r1 + r2, i1 + i2 )
 
 
-subC : ( number, number1 ) -> ( number, number1 ) -> ( number, number1 )
+subC : Complex -> Complex -> Complex
 subC ( r1, i1 ) ( r2, i2 ) =
     ( r1 - r2, i1 - i2 )
 
 
-mulC : ( number, number ) -> ( number, number ) -> ( number, number )
+mulC : Complex -> Complex -> Complex
 mulC ( r1, i1 ) ( r2, i2 ) =
     ( r1 * r2 - i1 * i2, i1 * r2 + r1 * i2 )
 
 
-absC : ( Float, Float ) -> Float
+absC : Complex -> Float
 absC ( r1, i1 ) =
     sqrt (r1 * r1 + i1 * i1)
 
 
-distC : ( Float, Float ) -> ( Float, Float ) -> Float
+distC : Complex -> Complex -> Float
 distC x y =
     absC (subC x y)
 
 
-scaleC : number -> ( number, number ) -> ( number, number )
+scaleC : Float -> Complex -> Complex
 scaleC a ( r, i ) =
     ( r * a, i * a )
 
 
-normalizeC : ( Float, Float ) -> ( Float, Float )
+normalizeC : Complex -> Complex
 normalizeC c =
     scaleC (1 / absC c) c
 
 
-rotateLeftC : ( a, number ) -> ( number, a )
+rotateLeftC : Complex -> Complex
 rotateLeftC ( r, i ) =
     ( -i, r )
 
 
-liveTimeFactorInside : Float
-liveTimeFactorInside =
-    2 / velocity
+scale : Complex -> Complex -> Float -> Float
+scale ( fromMin, fromMax ) ( toMin, toMax ) from =
+    (from - fromMin) / (fromMax - fromMin) * (toMax - toMin) + toMin
 
 
-liveTimeFactorOutside : Float
-liveTimeFactorOutside =
-    0.3 / velocity
+zoom : Float -> Complex -> Complex -> Complex
+zoom z ( offset_x, offset_y ) ( r, i ) =
+    ( r * z + offset_x, i * z + offset_y )
 
 
-maxItersPreview : number
-maxItersPreview =
-    10
+
+-- MANDELBROT FRACTAL MATH
 
 
-maxItersSelection : Int
-maxItersSelection =
-    50
+type alias MandelbrotDomain =
+    { zoom : Float
+    , offset : Complex
+    , r_range : Complex
+    , i_range : Complex
+    }
 
 
-maxPoints : Int
-maxPoints =
-    240
+defaultMandelbrotDomain : MandelbrotDomain
+defaultMandelbrotDomain =
+    { zoom = 1.0
+    , offset = ( 0.0, 0.0 )
+    , r_range = ( -2.0, 2.0 )
+    , i_range = ( -2.0, 2.0 )
+    }
 
 
-velocity : Float
-velocity =
-    1.8 / second
+zoomMandelbrotDomain : Float -> MandelbrotDomain -> MandelbrotDomain
+zoomMandelbrotDomain z md =
+    let
+        zSafe =
+            min 0.1 z
+
+        zr =
+            1 / zSafe
+    in
+        { zoom = zSafe
+        , offset = md.offset
+        , r_range = scaleC zr defaultMandelbrotDomain.r_range
+        , i_range = scaleC zr defaultMandelbrotDomain.i_range
+        }
 
 
-type alias MandelTrace =
-    List Complex
+type alias Orbital =
+    { length : Float
+    , segments : List OrbitalSegment
+    , c : Complex
+    , zlast : Complex
+    , inside : Bool
+    }
 
 
-type alias MLine =
+type alias OrbitalSegment =
     { from : Complex
     , to : Complex
     , distance : Float
@@ -106,91 +133,102 @@ type alias MLine =
     }
 
 
-toMLine : ( Complex, Complex ) -> Float -> MLine
-toMLine ( f, t ) d =
-    { from = f
-    , to = t
-    , distance = d
-    , length = absC (subC f t)
+segmentsToPath : List OrbitalSegment -> Path
+segmentsToPath ss =
+    case ss of
+        [] ->
+            []
+
+        first :: rest ->
+            List.map .to
+                ({ first | to = first.from } :: first :: rest)
+
+
+emptyOrbital : Orbital
+emptyOrbital =
+    { length = 0
+    , segments = []
+    , c = ( 0, 0 )
+    , zlast = ( 0, 0 )
+    , inside = True
     }
 
 
-toMLines : MandelTrace -> ( Float, List MLine )
-toMLines points =
+mandelbrotOrbital : Int -> Complex -> Orbital
+mandelbrotOrbital itersMax c =
     let
-        ls =
-            List.map2 (,) points (drop 1 points)
-
-        toMLine_ l ( distance, mlines ) =
+        reversedPath =
             let
-                newMLine =
-                    toMLine l distance
+                pathLoop iters z zs =
+                    if absC z >= 2.0 || iters == 0 then
+                        zs
+                    else
+                        let
+                            z_ =
+                                addC (mulC z z) c
+                        in
+                            pathLoop (iters - 1) z_ (z_ :: zs)
             in
-                ( distance + newMLine.length, newMLine :: mlines )
+                pathLoop itersMax c [ c ]
+
+        path =
+            reverse reversedPath
+
+        lines =
+            List.map2 (,) path (drop 1 path)
+
+        zlast =
+            Maybe.withDefault c (List.head reversedPath)
+
+        inside =
+            absC zlast < 2.0
+
+        addSegment ( f, t ) orbital =
+            let
+                newOrbitalSegment =
+                    { from = f
+                    , to = t
+                    , distance = orbital.length
+                    , length = absC (subC t f)
+                    }
+
+                newLength =
+                    orbital.length + newOrbitalSegment.length
+
+                newSegments =
+                    newOrbitalSegment :: orbital.segments
+            in
+                { orbital
+                    | length = newLength
+                    , segments = newSegments
+                }
     in
-        foldl toMLine_ ( 0, [] ) ls
+        foldl addSegment
+            { emptyOrbital
+                | c = c
+                , zlast = zlast
+                , inside = inside
+            }
+            lines
 
 
-type alias AnimatedTrace =
-    { lines : List MLine
-    , c : Complex
-    , zlast : Complex
-    , age : Time
-    , ttl : Time
-    , inside : Bool
-    , color : ( Float, Float, Float )
-    }
+
+-- SCREEN FROM/TO MANDELBROT DOMAIN PROJECTION
 
 
-type alias St =
-    { traces : List AnimatedTrace
-    , zoom : Float
-    , offset : Complex
-    , r_range : Complex
-    , i_range : Complex
-    , preview : ( Float, MandelTrace )
-    , previewActive : Bool
-    , ds : DeviceState
-    }
-
-
-initialSt : ( St, Cmd UserInput )
-initialSt =
-    ( { traces = []
-      , zoom = 1
-      , offset = ( 0, 0 )
-      , r_range = ( -2, 2 )
-      , i_range = ( -2, 2 )
-      , preview = ( 0.0, [] )
-      , previewActive = False
-      , ds = deviceStateFromScreen { width = 100, height = 100 }
-      }
-    , Task.perform WindowResize Window.size
-    )
-
-
-zoomTo : Float -> St -> St
-zoomTo zoom st =
-    { st
-        | zoom = zoom
-        , r_range = ( -2 / zoom, 2 / zoom )
-        , i_range = ( -2 / zoom, 2 / zoom )
-    }
-
-
-type alias DeviceState =
-    { screen_w_range : ( Float, Float )
+type alias ScreenDimensions =
+    { screen_w_range : Complex
     , screen_w : Int
-    , screen_h_range : ( Float, Float )
+    , screen_h_range : Complex
     , screen_h : Int
-    , mouse_w_range : ( Float, Float )
-    , mouse_h_range : ( Float, Float )
+    , mouse_w_range : Complex
+    , mouse_h_range : Complex
     , screen_diag : Float
     }
 
 
-deviceStateFromScreen : Window.Size -> DeviceState
-deviceStateFromScreen ws =
+makeScreenDimensions : Window.Size -> ScreenDimensions
+makeScreenDimensions ws =
     let
         w =
             ws.width
@@ -226,82 +264,97 @@ deviceStateFromScreen ws =
         }
 
 
-outOfMandelbrot : Int -> Complex -> MandelTrace
-outOfMandelbrot itersMax c =
-    let
-        outOfMandelbrotAcc iters z zs =
-            if absC z >= 2.0 || iters == 0 then
-                zs
-            else
-                let
-                    z_ =
-                        addC (mulC z z) c
-                in
-                    outOfMandelbrotAcc (iters - 1) z_ (z_ :: zs)
-    in
-        outOfMandelbrotAcc itersMax c [ c ]
-
-
-scale : ( Float, Float ) -> ( Float, Float ) -> Float -> Float
-scale ( fromMin, fromMax ) ( toMin, toMax ) from =
-    (from - fromMin) / (fromMax - fromMin) * (toMax - toMin) + toMin
-
-
-zoom : Float -> ( Float, Float ) -> Complex -> Complex
-zoom z ( offset_x, offset_y ) ( r, i ) =
-    ( r * z + offset_x, i * z + offset_y )
-
-
-mouseToMandel : Mouse.Position -> St -> Complex
-mouseToMandel mouse st =
-    ( scale st.ds.mouse_w_range st.r_range (toFloat mouse.x)
-    , scale st.ds.mouse_h_range st.i_range (toFloat mouse.y)
+projectIntoMandelbrot : Mouse.Position -> ScreenDimensions -> MandelbrotDomain -> Complex
+projectIntoMandelbrot mouse sd md =
+    ( scale sd.mouse_w_range md.r_range (toFloat mouse.x)
+    , scale sd.mouse_h_range md.i_range (toFloat mouse.y)
     )
 
 
-mandelToScreen : St -> Complex -> ( Float, Float )
-mandelToScreen st ( r, i ) =
-    ( scale st.r_range st.ds.screen_w_range r
-    , scale st.i_range st.ds.screen_h_range i
+projectToScreen : Complex -> MandelbrotDomain -> ScreenDimensions -> Complex
+projectToScreen ( r, i ) md sd =
+    ( scale md.r_range sd.screen_w_range r
+    , scale md.i_range sd.screen_h_range i
     )
 
 
 
--- CALCULATIONS
+-- MODEL
 
 
-update : UserInput -> St -> ( St, Cmd UserInput )
+type alias Model =
+    { traces : List AnimatedOrbital
+    , preview : Maybe OrbitalPreview
+    , md : MandelbrotDomain
+    , ds : ScreenDimensions
+    }
+
+
+type alias OrbitalPreview =
+    { baseColor : Float
+    , orbital : Orbital
+    }
+
+
+type alias AnimatedOrbital =
+    { orbital : Orbital
+    , age : Time
+    , ttl : Time
+    , color : ( Float, Float, Float )
+    }
+
+
+init : ( Model, Cmd Msg )
+init =
+    ( { traces = []
+      , preview = Nothing
+      , md = defaultMandelbrotDomain
+      , ds = makeScreenDimensions { width = 100, height = 100 }
+      }
+    , Task.perform WindowResize Window.size
+    )
+
+
+
+-- UPDATE
+
+
+type Msg
+    = UpdatePreview Mouse.Position
+    | EnablePreview Mouse.Position
+    | Select Mouse.Position
+    | Animate Time
+    | WindowResize Window.Size
+    | ZoomIn
+    | ZoomReset
+    | ZoomOut
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
 update ui st =
     let
         st_ =
             case ui of
                 ZoomIn ->
-                    zoomTo (st.zoom * 1.2) st
+                    zoomTo (st.md.zoom * 1.2) st
 
                 ZoomReset ->
                     zoomTo 1.0 st
 
                 ZoomOut ->
-                    zoomTo (max 0.75 (st.zoom / 1.2)) st
+                    zoomTo (max 0.75 (st.md.zoom / 1.2)) st
 
                 WindowResize window ->
-                    { st | ds = deviceStateFromScreen window }
+                    { st | ds = makeScreenDimensions window }
 
                 EnablePreview mouse ->
-                    preview mouse { st | previewActive = True }
+                    preview mouse (enablePreview st)
 
-                Preview mouse ->
-                    if st.previewActive then
-                        preview mouse st
-                    else
-                        st
+                UpdatePreview mouse ->
+                    preview mouse st
 
                 Select mouse ->
-                    select mouse
-                        { st
-                            | previewActive = False
-                            , preview = ( 0.0, [] )
-                        }
+                    select mouse (disablePreview st)
 
                 Animate delta ->
                     animate delta st
@@ -309,112 +362,89 @@ update ui st =
         ( st_, Cmd.none )
 
 
-preview : Mouse.Position -> St -> St
+zoomTo : Float -> Model -> Model
+zoomTo zoom st =
+    { st
+        | md = zoomMandelbrotDomain zoom st.md
+    }
+
+
+disablePreview : Model -> Model
+disablePreview st =
+    { st | preview = Nothing }
+
+
+enablePreview : Model -> Model
+enablePreview st =
+    { st
+        | preview =
+            Just
+                { baseColor = 0.0
+                , orbital = emptyOrbital
+                }
+    }
+
+
+preview : Mouse.Position -> Model -> Model
 preview mouse st =
     let
-        start =
-            mouseToMandel mouse st
-    in
-        { st
-            | preview =
-                ( getBaseColor start st.r_range
-                , outOfMandelbrot maxItersPreview start
-                )
-        }
-
-
-totalPoints : St -> Int
-totalPoints st =
-    List.foldr
-        (\t s -> s + List.length t.lines)
-        0
-        st.traces
-
-
-timeToNextTraceDeath : St -> Float
-timeToNextTraceDeath st =
-    List.foldr
-        (\t d ->
+        createPreview _ =
             let
-                d_ =
-                    t.ttl - t.age
+                start =
+                    projectIntoMandelbrot mouse st.ds st.md
             in
-                if d <= 0.0 then
-                    d_
-                else if d_ <= 0.0 then
-                    d
-                else
-                    min d d_
-        )
-        0.0
-        st.traces
+                { baseColor = getBaseColor start st.md.r_range
+                , orbital = mandelbrotOrbital maxItersPreview start
+                }
+    in
+        { st | preview = Maybe.map createPreview st.preview }
 
 
-select : Mouse.Position -> St -> St
+select : Mouse.Position -> Model -> Model
 select mouse st =
     let
         selection =
-            mouseToMandel mouse st
+            projectIntoMandelbrot mouse st.ds st.md
 
         maxIters =
             min maxItersSelection (maxPoints - totalPoints st)
 
-        traceRev =
-            outOfMandelbrot maxIters selection
-
-        trace =
-            reverse traceRev
-
-        ( totalLength, mlines ) =
-            toMLines trace
+        orbital =
+            mandelbrotOrbital maxIters selection
     in
-        case List.reverse mlines of
+        case orbital.segments of
             [] ->
                 st
 
-            lastMLine :: _ ->
-                case traceRev of
-                    [] ->
-                        st
+            _ :: _ ->
+                let
+                    ttl =
+                        (if orbital.inside then
+                            liveTimeFactorInside
+                         else
+                            liveTimeFactorOutside
+                        )
+                            * orbital.length
 
-                    lastTrace :: _ ->
-                        let
-                            inside =
-                                absC lastTrace <= 2.0
+                    sat =
+                        scale ( 0, toFloat maxItersSelection )
+                            ( 0.3, 0.8 )
+                            (toFloat (length orbital.segments))
 
-                            mlinesLength =
-                                sum << List.map (\l -> l.length)
-
-                            ttl =
-                                (if inside then
-                                    liveTimeFactorInside
-                                 else
-                                    liveTimeFactorOutside
-                                )
-                                    * mlinesLength mlines
-
-                            sat =
-                                scale ( 0, toFloat maxItersSelection )
-                                    ( 0.3, 0.8 )
-                                    (toFloat (length mlines))
-
-                            animatedTrace =
-                                { lines = mlines
-                                , ttl = ttl
-                                , age = 0
-                                , c = selection
-                                , zlast = lastTrace
-                                , inside = inside
-                                , color = ( getBaseColor selection st.r_range, sat, 0.5 )
-                                }
-                        in
-                            { st
-                                | traces =
-                                    animatedTrace :: st.traces
-                            }
+                    animatedTrace =
+                        { orbital = orbital
+                        , ttl = ttl
+                        , age = 0
+                        , color = ( getBaseColor selection st.md.r_range, sat, 0.5 )
+                        }
+                in
+                    { st
+                        | traces =
+                            animatedTrace :: st.traces
+                    }
 
 
-getBaseColor : ( Float, Float ) -> ( Float, Float ) -> Float
+getBaseColor : Complex -> Complex -> Float
 getBaseColor z r_range =
     let
         hue =
@@ -423,7 +453,7 @@ getBaseColor z r_range =
         degrees hue
 
 
-animate : Time -> St -> St
+animate : Time -> Model -> Model
 animate dt st =
     let
         updateAge st =
@@ -447,8 +477,8 @@ animate dt st =
 -- RENDERING
 
 
-render : St -> Html.Html UserInput
-render st =
+view : Model -> Html.Html Msg
+view st =
     Html.div []
         [ Html.div
             [ Html.Attributes.style
@@ -484,7 +514,7 @@ render st =
                         [ Html.text "Zoom" ]
                     , Html.td
                         []
-                        [ Html.text (toString st.zoom)
+                        [ Html.text (toString st.md.zoom)
                         ]
                     ]
                 ]
@@ -513,7 +543,7 @@ render st =
                         st.ds.screen_h
                         [ filled black <|
                             circle <|
-                                scale ( 0, 1 / st.zoom ) minScreenRange 1.0
+                                scale ( 0, 1 / st.md.zoom ) minScreenRange 1.0
                         ]
             in
                 layers
@@ -523,30 +553,50 @@ render st =
         ]
 
 
-renderPreview : St -> List Form
+renderPreview : Model -> List Form
 renderPreview st =
-    let
-        ( hue, zs ) =
-            st.preview
+    case st.preview of
+        Nothing ->
+            []
 
-        lineStyle =
-            dashed (Color.hsla hue 0.7 0.7 0.5)
-    in
-        [ traced lineStyle <| path <| List.map (mandelToScreen st) zs ]
+        Just p ->
+            let
+                lineStyle =
+                    dashed (Color.hsla p.baseColor 0.7 0.7 0.5)
+            in
+                [ traced lineStyle <|
+                    path <|
+                        List.map (\s -> projectToScreen s st.md st.ds) <|
+                            segmentsToPath <|
+                                reverse p.orbital.segments
+                ]
 
 
-renderSelection : St -> List Form
+renderSelection : Model -> List Form
 renderSelection st =
-    concatMap (renderAnimatedMandelTrace st) st.traces
+    concatMap (renderAnimatedOrbital st) st.traces
 
 
-renderAnimatedMandelTrace : St -> AnimatedTrace -> List Form
-renderAnimatedMandelTrace st t =
-    concatMap (renderMLine st t.age t.inside t.color) t.lines
+renderAnimatedOrbital : Model -> AnimatedOrbital -> List Form
+renderAnimatedOrbital st t =
+    concatMap
+        (renderAnimatedOrbitalSegment
+            st
+            t.age
+            t.orbital.inside
+            t.color
+        )
+        t.orbital.segments
 
 
-renderMLine : St -> Float -> Bool -> ( Float, Float, Float ) -> MLine -> List Form
-renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
+renderAnimatedOrbitalSegment :
+    Model
+    -> Float
+    -> Bool
+    -> ( Float, Float, Float )
+    -> OrbitalSegment
+    -> List Form
+renderAnimatedOrbitalSegment st age insideMandelbrot ( hue, sat, lum ) l =
     let
         glow =
             (age * velocity - l.distance) / l.length
@@ -558,16 +608,13 @@ renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
             glow <= 0
 
         coolingDown =
-            glow >= 1 && glow < 5
-
-        cool =
-            glow >= 5
+            glow >= 1
 
         screenFrom =
-            mandelToScreen st l.from
+            projectToScreen l.from st.md st.ds
 
         screenTo =
-            mandelToScreen st l.to
+            projectToScreen l.to st.md st.ds
 
         screenLength =
             distC screenTo screenFrom
@@ -575,8 +622,8 @@ renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
         heat =
             if glowing then
                 1
-            else if coolingDown || cool then
-                1 / logBase 2 (glow + 1)
+            else if coolingDown then
+                1 / logBase 2 glow
             else if warmingUp then
                 -1 / (glow - 1)
             else
@@ -587,7 +634,7 @@ renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
                 intensity =
                     if warmingUp then
                         0.8 * heat + 0.2
-                    else if (coolingDown || cool) && glow <= 2 then
+                    else if coolingDown && glow <= 2 then
                         heat
                     else
                         heat
@@ -618,12 +665,12 @@ renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
             if insideMandelbrot then
                 let
                     radius =
-                        if glowing then
-                            screenLength / 4 * heat
-                        else if warmingUp then
-                            0
-                        else
-                            screenLength / 4
+                        screenLength
+                            / 4
+                            * if glowing then
+                                glow
+                              else
+                                1
 
                     alpha =
                         0.4 - 0.2 * heat
@@ -668,11 +715,8 @@ renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
                 , drawLine shadowColor fromShadowBelow toShadowBelow
                 , drawMarkerCircle
                 ]
+                    ++ drawMarkerCircleShadow
         else if coolingDown then
-            [ drawLine lineColor screenFrom screenTo
-            ]
-                ++ drawMarkerCircleShadow
-        else if cool then
             [ drawLine lineColor screenFrom screenTo
             ]
                 ++ drawMarkerCircleShadow
@@ -680,26 +724,42 @@ renderMLine st age insideMandelbrot ( hue, sat, lum ) l =
             []
 
 
-
--- INPUT
-
-
-type UserInput
-    = Preview Mouse.Position
-    | EnablePreview Mouse.Position
-    | Select Mouse.Position
-    | Animate Time
-    | WindowResize Window.Size
-    | ZoomIn
-    | ZoomReset
-    | ZoomOut
+totalPoints : Model -> Int
+totalPoints st =
+    List.foldr
+        (\t s -> s + List.length t.orbital.segments)
+        0
+        st.traces
 
 
-subscriptions : St -> Sub UserInput
+timeToNextTraceDeath : Model -> Float
+timeToNextTraceDeath st =
+    List.foldr
+        (\t d ->
+            let
+                d_ =
+                    t.ttl - t.age
+            in
+                if d <= 0.0 then
+                    d_
+                else if d_ <= 0.0 then
+                    d
+                else
+                    min d d_
+        )
+        0.0
+        st.traces
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
         [ Mouse.ups Select
-        , Mouse.moves Preview
+        , Mouse.moves UpdatePreview
         , Mouse.downs EnablePreview
         , Window.resizes WindowResize
         , AnimationFrame.diffs Animate
@@ -707,14 +767,48 @@ subscriptions _ =
 
 
 
--- MAIN LOOP
+-- DEFAULTS
 
 
-main : Program Never St UserInput
+liveTimeFactorInside : Float
+liveTimeFactorInside =
+    2 / velocity
+
+
+liveTimeFactorOutside : Float
+liveTimeFactorOutside =
+    0.3 / velocity
+
+
+maxItersPreview : Int
+maxItersPreview =
+    10
+
+
+maxItersSelection : Int
+maxItersSelection =
+    50
+
+
+maxPoints : Int
+maxPoints =
+    240
+
+
+velocity : Float
+velocity =
+    1.8 / second
+
+
+
+-- MAIN
+
+
+main : Program Never Model Msg
 main =
     Html.program
-        { init = initialSt
+        { init = init
         , update = update
         , subscriptions = subscriptions
-        , view = render
+        , view = view
         }
