@@ -104,7 +104,7 @@ zoomMandelbrotDomain : Float -> MandelbrotDomain -> MandelbrotDomain
 zoomMandelbrotDomain z md =
     let
         zSafe =
-            min 0.1 z
+            max 0.1 z
 
         zr =
             1 / zSafe
