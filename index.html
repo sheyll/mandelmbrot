@@ -12033,6 +12033,7 @@ var _evancz$elm_graphics$Collage$ngon = F2(
 				f,
 				A2(_elm_lang$core$List$range, 0, n - 1)));
 	});
+var _user$project$Main$splashScreenFadeSpeed = 0.1;
 var _user$project$Main$velocity = 1.8 / _elm_lang$core$Time$second;
 var _user$project$Main$maxPoints = 240;
 var _user$project$Main$maxItersSelection = 50;
@@ -12060,37 +12061,101 @@ var _user$project$Main$totalPoints = function (st) {
 		0,
 		st.traces);
 };
-var _user$project$Main$animate = F2(
-	function (dt, st) {
-		var removeOld = function (st) {
-			var isAlive = function (t) {
-				return _elm_lang$core$Native_Utils.cmp(t.ttl, t.age) > 0;
-			};
-			return _elm_lang$core$Native_Utils.update(
-				st,
+var _user$project$Main$splashScreenView = F2(
+	function (st, v) {
+		return (_elm_lang$core$Native_Utils.cmp(st.splashScreenAlpha, 0.1) > 0) ? {
+			ctor: '::',
+			_0: A2(
+				_elm_lang$html$Html$div,
 				{
-					traces: A2(_elm_lang$core$List$filter, isAlive, st.traces)
-				});
-		};
-		var updateAge = function (st) {
-			var increaseAge = F2(
-				function (dt, t) {
-					return _elm_lang$core$Native_Utils.update(
-						t,
-						{age: t.age + dt});
-				});
-			return _elm_lang$core$Native_Utils.update(
-				st,
+					ctor: '::',
+					_0: _elm_lang$html$Html_Attributes$style(
+						{
+							ctor: '::',
+							_0: {ctor: '_Tuple2', _0: 'position', _1: 'absolute'},
+							_1: {
+								ctor: '::',
+								_0: {ctor: '_Tuple2', _0: 'color', _1: 'yellow'},
+								_1: {
+									ctor: '::',
+									_0: {ctor: '_Tuple2', _0: 'z-index', _1: '3'},
+									_1: {
+										ctor: '::',
+										_0: {
+											ctor: '_Tuple2',
+											_0: 'opacity',
+											_1: _elm_lang$core$Basics$toString(st.splashScreenAlpha)
+										},
+										_1: {
+											ctor: '::',
+											_0: {ctor: '_Tuple2', _0: 'font-family', _1: '\"Times New Roman\", Times, serif'},
+											_1: {
+												ctor: '::',
+												_0: {ctor: '_Tuple2', _0: 'font-size', _1: '3em'},
+												_1: {ctor: '[]'}
+											}
+										}
+									}
+								}
+							}
+						}),
+					_1: {ctor: '[]'}
+				},
 				{
-					traces: A2(
-						_elm_lang$core$List$map,
-						increaseAge(dt),
-						st.traces)
-				});
-		};
-		return removeOld(
-			updateAge(st));
+					ctor: '::',
+					_0: _elm_lang$html$Html$text('Move the mouse over the black circle, then press, move and release the mouse button'),
+					_1: {ctor: '[]'}
+				}),
+			_1: v
+		} : v;
 	});
+var _user$project$Main$animate = function (dt) {
+	var fadeSplashscreen = function (st) {
+		if (_elm_lang$core$Native_Utils.cmp(st.splashScreenAlpha, 0.1) > 0) {
+			var a = st.splashScreenAlpha - (_elm_lang$core$Time$inSeconds(dt) * _user$project$Main$splashScreenFadeSpeed);
+			return _elm_lang$core$Native_Utils.update(
+				st,
+				{
+					splashScreenAlpha: (_elm_lang$core$Native_Utils.cmp(a, 0.1) > 0) ? a : 0.0
+				});
+		} else {
+			return _elm_lang$core$Native_Utils.update(
+				st,
+				{splashScreenAlpha: 0});
+		}
+	};
+	var removeOld = function (st) {
+		var isAlive = function (t) {
+			return _elm_lang$core$Native_Utils.cmp(t.ttl, t.age) > 0;
+		};
+		return _elm_lang$core$Native_Utils.update(
+			st,
+			{
+				traces: A2(_elm_lang$core$List$filter, isAlive, st.traces)
+			});
+	};
+	var updateAge = function (st) {
+		var increaseAge = F2(
+			function (dt, t) {
+				return _elm_lang$core$Native_Utils.update(
+					t,
+					{age: t.age + dt});
+			});
+		return _elm_lang$core$Native_Utils.update(
+			st,
+			{
+				traces: A2(
+					_elm_lang$core$List$map,
+					increaseAge(dt),
+					st.traces)
+			});
+	};
+	return function (_p0) {
+		return removeOld(
+			updateAge(
+				fadeSplashscreen(_p0)));
+	};
+};
 var _user$project$Main$disablePreview = function (st) {
 	return _elm_lang$core$Native_Utils.update(
 		st,
@@ -12112,11 +12177,11 @@ var _user$project$Main$enablePreview = function (st) {
 		});
 };
 var _user$project$Main$segmentsToPath = function (ss) {
-	var _p0 = ss;
-	if (_p0.ctor === '[]') {
+	var _p1 = ss;
+	if (_p1.ctor === '[]') {
 		return {ctor: '[]'};
 	} else {
-		var _p1 = _p0._0;
+		var _p2 = _p1._0;
 		return A2(
 			_elm_lang$core$List$map,
 			function (_) {
@@ -12125,9 +12190,9 @@ var _user$project$Main$segmentsToPath = function (ss) {
 			{
 				ctor: '::',
 				_0: _elm_lang$core$Native_Utils.update(
-					_p1,
-					{to: _p1.from}),
-				_1: {ctor: '::', _0: _p1, _1: _p0._1}
+					_p2,
+					{to: _p2.from}),
+				_1: {ctor: '::', _0: _p2, _1: _p1._1}
 			});
 	}
 };
@@ -12138,18 +12203,18 @@ var _user$project$Main$defaultMandelbrotDomain = {
 	i_range: {ctor: '_Tuple2', _0: -2.0, _1: 2.0}
 };
 var _user$project$Main$zoom = F3(
-	function (z, _p3, _p2) {
-		var _p4 = _p3;
-		var _p5 = _p2;
-		return {ctor: '_Tuple2', _0: (_p5._0 * z) + _p4._0, _1: (_p5._1 * z) + _p4._1};
+	function (z, _p4, _p3) {
+		var _p5 = _p4;
+		var _p6 = _p3;
+		return {ctor: '_Tuple2', _0: (_p6._0 * z) + _p5._0, _1: (_p6._1 * z) + _p5._1};
 	});
 var _user$project$Main$scale = F3(
-	function (_p7, _p6, from) {
-		var _p8 = _p7;
-		var _p11 = _p8._0;
-		var _p9 = _p6;
-		var _p10 = _p9._0;
-		return (((from - _p11) / (_p8._1 - _p11)) * (_p9._1 - _p10)) + _p10;
+	function (_p8, _p7, from) {
+		var _p9 = _p8;
+		var _p12 = _p9._0;
+		var _p10 = _p7;
+		var _p11 = _p10._0;
+		return (((from - _p12) / (_p9._1 - _p12)) * (_p10._1 - _p11)) + _p11;
 	});
 var _user$project$Main$projectIntoMandelbrot = F3(
 	function (mouse, sd, md) {
@@ -12168,22 +12233,22 @@ var _user$project$Main$projectIntoMandelbrot = F3(
 		};
 	});
 var _user$project$Main$projectToScreen = F3(
-	function (_p12, md, sd) {
-		var _p13 = _p12;
+	function (_p13, md, sd) {
+		var _p14 = _p13;
 		return {
 			ctor: '_Tuple2',
-			_0: A3(_user$project$Main$scale, md.r_range, sd.screen_w_range, _p13._0),
-			_1: A3(_user$project$Main$scale, md.i_range, sd.screen_h_range, _p13._1)
+			_0: A3(_user$project$Main$scale, md.r_range, sd.screen_w_range, _p14._0),
+			_1: A3(_user$project$Main$scale, md.i_range, sd.screen_h_range, _p14._1)
 		};
 	});
 var _user$project$Main$renderPreview = function (st) {
-	var _p14 = st.preview;
-	if (_p14.ctor === 'Nothing') {
+	var _p15 = st.preview;
+	if (_p15.ctor === 'Nothing') {
 		return {ctor: '[]'};
 	} else {
-		var _p15 = _p14._0;
+		var _p16 = _p15._0;
 		var lineStyle = _evancz$elm_graphics$Collage$dashed(
-			A4(_elm_lang$core$Color$hsla, _p15.baseColor, 0.7, 0.7, 0.5));
+			A4(_elm_lang$core$Color$hsla, _p16.baseColor, 0.7, 0.7, 0.5));
 		return {
 			ctor: '::',
 			_0: A2(
@@ -12196,23 +12261,23 @@ var _user$project$Main$renderPreview = function (st) {
 							return A3(_user$project$Main$projectToScreen, s, st.md, st.ds);
 						},
 						_user$project$Main$segmentsToPath(
-							_elm_lang$core$List$reverse(_p15.orbital.segments))))),
+							_elm_lang$core$List$reverse(_p16.orbital.segments))))),
 			_1: {ctor: '[]'}
 		};
 	}
 };
-var _user$project$Main$rotateLeftC = function (_p16) {
-	var _p17 = _p16;
-	return {ctor: '_Tuple2', _0: 0 - _p17._1, _1: _p17._0};
+var _user$project$Main$rotateLeftC = function (_p17) {
+	var _p18 = _p17;
+	return {ctor: '_Tuple2', _0: 0 - _p18._1, _1: _p18._0};
 };
 var _user$project$Main$scaleC = F2(
-	function (a, _p18) {
-		var _p19 = _p18;
-		return {ctor: '_Tuple2', _0: _p19._0 * a, _1: _p19._1 * a};
+	function (a, _p19) {
+		var _p20 = _p19;
+		return {ctor: '_Tuple2', _0: _p20._0 * a, _1: _p20._1 * a};
 	});
 var _user$project$Main$zoomMandelbrotDomain = F2(
 	function (z, md) {
-		var zSafe = A2(_elm_lang$core$Basics$min, 0.1, z);
+		var zSafe = A2(_elm_lang$core$Basics$max, 0.1, z);
 		var zr = 1 / zSafe;
 		return {
 			zoom: zSafe,
@@ -12229,11 +12294,11 @@ var _user$project$Main$zoomTo = F2(
 				md: A2(_user$project$Main$zoomMandelbrotDomain, zoom, st.md)
 			});
 	});
-var _user$project$Main$absC = function (_p20) {
-	var _p21 = _p20;
-	var _p23 = _p21._0;
-	var _p22 = _p21._1;
-	return _elm_lang$core$Basics$sqrt((_p23 * _p23) + (_p22 * _p22));
+var _user$project$Main$absC = function (_p21) {
+	var _p22 = _p21;
+	var _p24 = _p22._0;
+	var _p23 = _p22._1;
+	return _elm_lang$core$Basics$sqrt((_p24 * _p24) + (_p23 * _p23));
 };
 var _user$project$Main$normalizeC = function (c) {
 	return A2(
@@ -12251,20 +12316,20 @@ var _user$project$Main$getBaseColor = F2(
 		return _elm_lang$core$Basics$degrees(hue);
 	});
 var _user$project$Main$mulC = F2(
-	function (_p25, _p24) {
-		var _p26 = _p25;
-		var _p31 = _p26._0;
-		var _p30 = _p26._1;
-		var _p27 = _p24;
-		var _p29 = _p27._0;
-		var _p28 = _p27._1;
-		return {ctor: '_Tuple2', _0: (_p31 * _p29) - (_p30 * _p28), _1: (_p30 * _p29) + (_p31 * _p28)};
+	function (_p26, _p25) {
+		var _p27 = _p26;
+		var _p32 = _p27._0;
+		var _p31 = _p27._1;
+		var _p28 = _p25;
+		var _p30 = _p28._0;
+		var _p29 = _p28._1;
+		return {ctor: '_Tuple2', _0: (_p32 * _p30) - (_p31 * _p29), _1: (_p31 * _p30) + (_p32 * _p29)};
 	});
 var _user$project$Main$subC = F2(
-	function (_p33, _p32) {
-		var _p34 = _p33;
-		var _p35 = _p32;
-		return {ctor: '_Tuple2', _0: _p34._0 - _p35._0, _1: _p34._1 - _p35._1};
+	function (_p34, _p33) {
+		var _p35 = _p34;
+		var _p36 = _p33;
+		return {ctor: '_Tuple2', _0: _p35._0 - _p36._0, _1: _p35._1 - _p36._1};
 	});
 var _user$project$Main$distC = F2(
 	function (x, y) {
@@ -12272,24 +12337,24 @@ var _user$project$Main$distC = F2(
 			A2(_user$project$Main$subC, x, y));
 	});
 var _user$project$Main$addC = F2(
-	function (_p37, _p36) {
-		var _p38 = _p37;
-		var _p39 = _p36;
-		return {ctor: '_Tuple2', _0: _p38._0 + _p39._0, _1: _p38._1 + _p39._1};
+	function (_p38, _p37) {
+		var _p39 = _p38;
+		var _p40 = _p37;
+		return {ctor: '_Tuple2', _0: _p39._0 + _p40._0, _1: _p39._1 + _p40._1};
 	});
 var _user$project$Main$mandelbrotOrbital = F2(
 	function (itersMax, c) {
 		var addSegment = F2(
-			function (_p40, orbital) {
-				var _p41 = _p40;
-				var _p43 = _p41._1;
-				var _p42 = _p41._0;
+			function (_p41, orbital) {
+				var _p42 = _p41;
+				var _p44 = _p42._1;
+				var _p43 = _p42._0;
 				var newOrbitalSegment = {
-					from: _p42,
-					to: _p43,
+					from: _p43,
+					to: _p44,
 					distance: orbital.length,
 					length: _user$project$Main$absC(
-						A2(_user$project$Main$subC, _p43, _p42))
+						A2(_user$project$Main$subC, _p44, _p43))
 				};
 				var newLength = orbital.length + newOrbitalSegment.length;
 				var newSegments = {ctor: '::', _0: newOrbitalSegment, _1: orbital.segments};
@@ -12357,7 +12422,7 @@ var _user$project$Main$mandelbrotOrbital = F2(
 	});
 var _user$project$Main$preview = F2(
 	function (mouse, st) {
-		var createPreview = function (_p44) {
+		var createPreview = function (_p45) {
 			var start = A3(_user$project$Main$projectIntoMandelbrot, mouse, st.ds, st.md);
 			return {
 				baseColor: A2(_user$project$Main$getBaseColor, start, st.md.r_range),
@@ -12378,8 +12443,8 @@ var _user$project$Main$select = F2(
 			_user$project$Main$maxPoints - _user$project$Main$totalPoints(st));
 		var selection = A3(_user$project$Main$projectIntoMandelbrot, mouse, st.ds, st.md);
 		var orbital = A2(_user$project$Main$mandelbrotOrbital, maxIters, selection);
-		var _p45 = orbital.segments;
-		if (_p45.ctor === '[]') {
+		var _p46 = orbital.segments;
+		if (_p46.ctor === '[]') {
 			return st;
 		} else {
 			var sat = A3(
@@ -12414,9 +12479,9 @@ var _user$project$Main$select = F2(
 var _user$project$Main$makeScreenDimensions = function (ws) {
 	var h = ws.height;
 	var w = ws.width;
-	var _p46 = (_elm_lang$core$Native_Utils.cmp(w, h) > 0) ? {ctor: '_Tuple2', _0: h, _1: h} : {ctor: '_Tuple2', _0: w, _1: w};
-	var aw = _p46._0;
-	var ah = _p46._1;
+	var _p47 = (_elm_lang$core$Native_Utils.cmp(w, h) > 0) ? {ctor: '_Tuple2', _0: h, _1: h} : {ctor: '_Tuple2', _0: w, _1: w};
+	var aw = _p47._0;
+	var ah = _p47._1;
 	var w_half = _elm_lang$core$Basics$toFloat(aw) / 2;
 	var h_half = _elm_lang$core$Basics$toFloat(ah) / 2;
 	var mouse_h_range = {
@@ -12443,8 +12508,8 @@ var _user$project$Main$makeScreenDimensions = function (ws) {
 var _user$project$Main$update = F2(
 	function (ui, st) {
 		var st_ = function () {
-			var _p47 = ui;
-			switch (_p47.ctor) {
+			var _p48 = ui;
+			switch (_p48.ctor) {
 				case 'ZoomIn':
 					return A2(_user$project$Main$zoomTo, st.md.zoom * 1.2, st);
 				case 'ZoomReset':
@@ -12458,32 +12523,32 @@ var _user$project$Main$update = F2(
 					return _elm_lang$core$Native_Utils.update(
 						st,
 						{
-							ds: _user$project$Main$makeScreenDimensions(_p47._0)
+							ds: _user$project$Main$makeScreenDimensions(_p48._0)
 						});
 				case 'EnablePreview':
 					return A2(
 						_user$project$Main$preview,
-						_p47._0,
+						_p48._0,
 						_user$project$Main$enablePreview(st));
 				case 'UpdatePreview':
-					return A2(_user$project$Main$preview, _p47._0, st);
+					return A2(_user$project$Main$preview, _p48._0, st);
 				case 'Select':
 					return A2(
 						_user$project$Main$select,
-						_p47._0,
+						_p48._0,
 						_user$project$Main$disablePreview(st));
 				default:
-					return A2(_user$project$Main$animate, _p47._0, st);
+					return A2(_user$project$Main$animate, _p48._0, st);
 			}
 		}();
 		return {ctor: '_Tuple2', _0: st_, _1: _elm_lang$core$Platform_Cmd$none};
 	});
 var _user$project$Main$renderAnimatedOrbitalSegment = F5(
-	function (st, age, insideMandelbrot, _p48, l) {
-		var _p49 = _p48;
-		var _p52 = _p49._1;
-		var _p51 = _p49._2;
-		var _p50 = _p49._0;
+	function (st, age, insideMandelbrot, _p49, l) {
+		var _p50 = _p49;
+		var _p53 = _p50._1;
+		var _p52 = _p50._2;
+		var _p51 = _p50._0;
 		var drawLine = F3(
 			function (c, f, t) {
 				return A2(
@@ -12510,7 +12575,7 @@ var _user$project$Main$renderAnimatedOrbitalSegment = F5(
 		var heat = glowing ? 1 : (coolingDown ? (1 / A2(_elm_lang$core$Basics$logBase, 2, glow)) : (warmingUp ? (-1 / (glow - 1)) : 0));
 		var lineColor = function () {
 			var intensity = warmingUp ? ((0.8 * heat) + 0.2) : ((coolingDown && (_elm_lang$core$Native_Utils.cmp(glow, 2) < 1)) ? heat : heat);
-			return A4(_elm_lang$core$Color$hsla, _p50, _p52, _p51, intensity);
+			return A4(_elm_lang$core$Color$hsla, _p51, _p53, _p52, intensity);
 		}();
 		var drawCircle = F2(
 			function (style, radius) {
@@ -12536,7 +12601,7 @@ var _user$project$Main$renderAnimatedOrbitalSegment = F5(
 			if (insideMandelbrot) {
 				var alpha = 0.4 - (0.2 * heat);
 				var style = _evancz$elm_graphics$Collage$filled(
-					A4(_elm_lang$core$Color$hsla, _p50, _p52, _p51, alpha));
+					A4(_elm_lang$core$Color$hsla, _p51, _p53, _p52, alpha));
 				var radius = (screenLength / 4) * (glowing ? glow : 1);
 				return {
 					ctor: '::',
@@ -12555,7 +12620,7 @@ var _user$project$Main$renderAnimatedOrbitalSegment = F5(
 			};
 		} else {
 			if (glowing) {
-				var shadowColor = A4(_elm_lang$core$Color$hsla, _p50, _p52 / 2, _p51, 0.75 - (0.75 * glow));
+				var shadowColor = A4(_elm_lang$core$Color$hsla, _p51, _p53 / 2, _p52, 0.75 - (0.75 * glow));
 				var shadowDistance = ((1.0e-2 * l.length) * glow) * st.ds.screen_diag;
 				var ortho = A2(
 					_user$project$Main$scaleC,
@@ -12632,9 +12697,9 @@ var _user$project$Main$ScreenDimensions = F7(
 	function (a, b, c, d, e, f, g) {
 		return {screen_w_range: a, screen_w: b, screen_h_range: c, screen_h: d, mouse_w_range: e, mouse_h_range: f, screen_diag: g};
 	});
-var _user$project$Main$Model = F4(
-	function (a, b, c, d) {
-		return {traces: a, preview: b, md: c, ds: d};
+var _user$project$Main$Model = F5(
+	function (a, b, c, d, e) {
+		return {traces: a, preview: b, md: c, ds: d, splashScreenAlpha: e};
 	});
 var _user$project$Main$OrbitalPreview = F2(
 	function (a, b) {
@@ -12651,70 +12716,37 @@ var _user$project$Main$view = function (st) {
 	return A2(
 		_elm_lang$html$Html$div,
 		{ctor: '[]'},
-		{
-			ctor: '::',
-			_0: A2(
-				_elm_lang$html$Html$div,
-				{
-					ctor: '::',
-					_0: _elm_lang$html$Html_Attributes$style(
-						{
-							ctor: '::',
-							_0: {ctor: '_Tuple2', _0: 'position', _1: 'absolute'},
-							_1: {
+		A2(
+			_user$project$Main$splashScreenView,
+			st,
+			{
+				ctor: '::',
+				_0: A2(
+					_elm_lang$html$Html$div,
+					{
+						ctor: '::',
+						_0: _elm_lang$html$Html_Attributes$style(
+							{
 								ctor: '::',
-								_0: {ctor: '_Tuple2', _0: 'color', _1: 'gray'},
+								_0: {ctor: '_Tuple2', _0: 'position', _1: 'absolute'},
 								_1: {
 									ctor: '::',
-									_0: {ctor: '_Tuple2', _0: 'z-index', _1: '2'},
-									_1: {ctor: '[]'}
-								}
-							}
-						}),
-					_1: {ctor: '[]'}
-				},
-				{
-					ctor: '::',
-					_0: A2(
-						_elm_lang$html$Html$table,
-						{ctor: '[]'},
-						{
-							ctor: '::',
-							_0: A2(
-								_elm_lang$html$Html$tr,
-								{ctor: '[]'},
-								{
-									ctor: '::',
-									_0: A2(
-										_elm_lang$html$Html$td,
-										{ctor: '[]'},
-										{
-											ctor: '::',
-											_0: _elm_lang$html$Html$text('Total Points'),
-											_1: {ctor: '[]'}
-										}),
+									_0: {ctor: '_Tuple2', _0: 'color', _1: 'gray'},
 									_1: {
 										ctor: '::',
-										_0: A2(
-											_elm_lang$html$Html$td,
-											{ctor: '[]'},
-											{
-												ctor: '::',
-												_0: _elm_lang$html$Html$text(
-													A2(
-														_elm_lang$core$Basics_ops['++'],
-														_elm_lang$core$Basics$toString(
-															_user$project$Main$totalPoints(st)),
-														A2(
-															_elm_lang$core$Basics_ops['++'],
-															'/',
-															_elm_lang$core$Basics$toString(_user$project$Main$maxPoints)))),
-												_1: {ctor: '[]'}
-											}),
+										_0: {ctor: '_Tuple2', _0: 'z-index', _1: '2'},
 										_1: {ctor: '[]'}
 									}
-								}),
-							_1: {
+								}
+							}),
+						_1: {ctor: '[]'}
+					},
+					{
+						ctor: '::',
+						_0: A2(
+							_elm_lang$html$Html$table,
+							{ctor: '[]'},
+							{
 								ctor: '::',
 								_0: A2(
 									_elm_lang$html$Html$tr,
@@ -12726,7 +12758,7 @@ var _user$project$Main$view = function (st) {
 											{ctor: '[]'},
 											{
 												ctor: '::',
-												_0: _elm_lang$html$Html$text(' Time till next cleanup'),
+												_0: _elm_lang$html$Html$text('Total Points'),
 												_1: {ctor: '[]'}
 											}),
 										_1: {
@@ -12737,9 +12769,14 @@ var _user$project$Main$view = function (st) {
 												{
 													ctor: '::',
 													_0: _elm_lang$html$Html$text(
-														_elm_lang$core$Basics$toString(
-															_elm_lang$core$Basics$round(
-																_user$project$Main$timeToNextTraceDeath(st)))),
+														A2(
+															_elm_lang$core$Basics_ops['++'],
+															_elm_lang$core$Basics$toString(
+																_user$project$Main$totalPoints(st)),
+															A2(
+																_elm_lang$core$Basics_ops['++'],
+																'/',
+																_elm_lang$core$Basics$toString(_user$project$Main$maxPoints)))),
 													_1: {ctor: '[]'}
 												}),
 											_1: {ctor: '[]'}
@@ -12757,7 +12794,7 @@ var _user$project$Main$view = function (st) {
 												{ctor: '[]'},
 												{
 													ctor: '::',
-													_0: _elm_lang$html$Html$text('Zoom'),
+													_0: _elm_lang$html$Html$text(' Time till next cleanup'),
 													_1: {ctor: '[]'}
 												}),
 											_1: {
@@ -12768,47 +12805,64 @@ var _user$project$Main$view = function (st) {
 													{
 														ctor: '::',
 														_0: _elm_lang$html$Html$text(
-															_elm_lang$core$Basics$toString(st.md.zoom)),
+															_elm_lang$core$Basics$toString(
+																_elm_lang$core$Basics$round(
+																	_user$project$Main$timeToNextTraceDeath(st)))),
 														_1: {ctor: '[]'}
 													}),
 												_1: {ctor: '[]'}
 											}
 										}),
-									_1: {ctor: '[]'}
+									_1: {
+										ctor: '::',
+										_0: A2(
+											_elm_lang$html$Html$tr,
+											{ctor: '[]'},
+											{
+												ctor: '::',
+												_0: A2(
+													_elm_lang$html$Html$td,
+													{ctor: '[]'},
+													{
+														ctor: '::',
+														_0: _elm_lang$html$Html$text('Zoom'),
+														_1: {ctor: '[]'}
+													}),
+												_1: {
+													ctor: '::',
+													_0: A2(
+														_elm_lang$html$Html$td,
+														{ctor: '[]'},
+														{
+															ctor: '::',
+															_0: _elm_lang$html$Html$text(
+																_elm_lang$core$Basics$toString(st.md.zoom)),
+															_1: {ctor: '[]'}
+														}),
+													_1: {ctor: '[]'}
+												}
+											}),
+										_1: {ctor: '[]'}
+									}
 								}
-							}
-						}),
-					_1: {
-						ctor: '::',
-						_0: A2(
-							_elm_lang$html$Html$div,
-							{ctor: '[]'},
-							{
-								ctor: '::',
-								_0: A2(
-									_elm_lang$html$Html$button,
-									{
-										ctor: '::',
-										_0: _elm_lang$html$Html_Events$onClick(_user$project$Main$ZoomIn),
-										_1: {ctor: '[]'}
-									},
-									{
-										ctor: '::',
-										_0: _elm_lang$html$Html$text('+'),
-										_1: {ctor: '[]'}
-									}),
-								_1: {
+							}),
+						_1: {
+							ctor: '::',
+							_0: A2(
+								_elm_lang$html$Html$div,
+								{ctor: '[]'},
+								{
 									ctor: '::',
 									_0: A2(
 										_elm_lang$html$Html$button,
 										{
 											ctor: '::',
-											_0: _elm_lang$html$Html_Events$onClick(_user$project$Main$ZoomReset),
+											_0: _elm_lang$html$Html_Events$onClick(_user$project$Main$ZoomIn),
 											_1: {ctor: '[]'}
 										},
 										{
 											ctor: '::',
-											_0: _elm_lang$html$Html$text('1.0'),
+											_0: _elm_lang$html$Html$text('+'),
 											_1: {ctor: '[]'}
 										}),
 									_1: {
@@ -12817,65 +12871,79 @@ var _user$project$Main$view = function (st) {
 											_elm_lang$html$Html$button,
 											{
 												ctor: '::',
-												_0: _elm_lang$html$Html_Events$onClick(_user$project$Main$ZoomOut),
+												_0: _elm_lang$html$Html_Events$onClick(_user$project$Main$ZoomReset),
 												_1: {ctor: '[]'}
 											},
 											{
 												ctor: '::',
-												_0: _elm_lang$html$Html$text('-'),
+												_0: _elm_lang$html$Html$text('1.0'),
 												_1: {ctor: '[]'}
 											}),
+										_1: {
+											ctor: '::',
+											_0: A2(
+												_elm_lang$html$Html$button,
+												{
+													ctor: '::',
+													_0: _elm_lang$html$Html_Events$onClick(_user$project$Main$ZoomOut),
+													_1: {ctor: '[]'}
+												},
+												{
+													ctor: '::',
+													_0: _elm_lang$html$Html$text('-'),
+													_1: {ctor: '[]'}
+												}),
+											_1: {ctor: '[]'}
+										}
+									}
+								}),
+							_1: {ctor: '[]'}
+						}
+					}),
+				_1: {
+					ctor: '::',
+					_0: _evancz$elm_graphics$Element$toHtml(
+						function () {
+							var minScreenRange = (_elm_lang$core$Native_Utils.cmp(st.ds.screen_w, st.ds.screen_h) < 0) ? st.ds.screen_w_range : st.ds.screen_h_range;
+							var domainCircle = A3(
+								_evancz$elm_graphics$Collage$collage,
+								st.ds.screen_w,
+								st.ds.screen_h,
+								{
+									ctor: '::',
+									_0: A2(
+										_evancz$elm_graphics$Collage$filled,
+										_elm_lang$core$Color$black,
+										_evancz$elm_graphics$Collage$circle(
+											A3(
+												_user$project$Main$scale,
+												{ctor: '_Tuple2', _0: 0, _1: 1 / st.md.zoom},
+												minScreenRange,
+												1.0))),
+									_1: {ctor: '[]'}
+								});
+							var diagrams = A3(
+								_evancz$elm_graphics$Collage$collage,
+								st.ds.screen_w,
+								st.ds.screen_h,
+								A2(
+									_elm_lang$core$Basics_ops['++'],
+									_user$project$Main$renderPreview(st),
+									_user$project$Main$renderSelection(st)));
+							return _evancz$elm_graphics$Element$layers(
+								{
+									ctor: '::',
+									_0: domainCircle,
+									_1: {
+										ctor: '::',
+										_0: diagrams,
 										_1: {ctor: '[]'}
 									}
-								}
-							}),
-						_1: {ctor: '[]'}
-					}
-				}),
-			_1: {
-				ctor: '::',
-				_0: _evancz$elm_graphics$Element$toHtml(
-					function () {
-						var minScreenRange = (_elm_lang$core$Native_Utils.cmp(st.ds.screen_w, st.ds.screen_h) < 0) ? st.ds.screen_w_range : st.ds.screen_h_range;
-						var domainCircle = A3(
-							_evancz$elm_graphics$Collage$collage,
-							st.ds.screen_w,
-							st.ds.screen_h,
-							{
-								ctor: '::',
-								_0: A2(
-									_evancz$elm_graphics$Collage$filled,
-									_elm_lang$core$Color$black,
-									_evancz$elm_graphics$Collage$circle(
-										A3(
-											_user$project$Main$scale,
-											{ctor: '_Tuple2', _0: 0, _1: 1 / st.md.zoom},
-											minScreenRange,
-											1.0))),
-								_1: {ctor: '[]'}
-							});
-						var diagrams = A3(
-							_evancz$elm_graphics$Collage$collage,
-							st.ds.screen_w,
-							st.ds.screen_h,
-							A2(
-								_elm_lang$core$Basics_ops['++'],
-								_user$project$Main$renderPreview(st),
-								_user$project$Main$renderSelection(st)));
-						return _evancz$elm_graphics$Element$layers(
-							{
-								ctor: '::',
-								_0: domainCircle,
-								_1: {
-									ctor: '::',
-									_0: diagrams,
-									_1: {ctor: '[]'}
-								}
-							});
-					}()),
-				_1: {ctor: '[]'}
-			}
-		});
+								});
+						}()),
+					_1: {ctor: '[]'}
+				}
+			}));
 };
 var _user$project$Main$WindowResize = function (a) {
 	return {ctor: 'WindowResize', _0: a};
@@ -12887,7 +12955,8 @@ var _user$project$Main$init = {
 		preview: _elm_lang$core$Maybe$Nothing,
 		md: _user$project$Main$defaultMandelbrotDomain,
 		ds: _user$project$Main$makeScreenDimensions(
-			{width: 100, height: 100})
+			{width: 100, height: 100}),
+		splashScreenAlpha: 1
 	},
 	_1: A2(_elm_lang$core$Task$perform, _user$project$Main$WindowResize, _elm_lang$window$Window$size)
 };
@@ -12903,7 +12972,7 @@ var _user$project$Main$EnablePreview = function (a) {
 var _user$project$Main$UpdatePreview = function (a) {
 	return {ctor: 'UpdatePreview', _0: a};
 };
-var _user$project$Main$subscriptions = function (_p53) {
+var _user$project$Main$subscriptions = function (_p54) {
 	return _elm_lang$core$Platform_Sub$batch(
 		{
 			ctor: '::',

@@ -287,6 +287,8 @@ type alias Model =
     , preview : Maybe OrbitalPreview
     , md : MandelbrotDomain
     , ds : ScreenDimensions
+    , splashScreenAlpha : Maybe Float
+    , controls : Bool
     }
 
 
@@ -308,8 +310,10 @@ init : ( Model, Cmd Msg )
 init =
     ( { traces = []
       , preview = Nothing
-      , md = defaultMandelbrotDomain
+      , md = zoomMandelbrotDomain defaultZoom defaultMandelbrotDomain
       , ds = makeScreenDimensions { width = 100, height = 100 }
+      , splashScreenAlpha = Just 1.0
+      , controls = False
       }
     , Task.perform WindowResize Window.size
     )
@@ -328,6 +332,7 @@ type Msg
     | ZoomIn
     | ZoomReset
     | ZoomOut
+    | ToggleControls
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -348,7 +353,7 @@ update ui st =
                     { st | ds = makeScreenDimensions window }
 
                 EnablePreview mouse ->
-                    preview mouse (enablePreview st)
+                    preview mouse (enablePreview (stopSplashImmediately st))
 
                 UpdatePreview mouse ->
                     preview mouse st
@@ -358,6 +363,9 @@ update ui st =
 
                 Animate delta ->
                     animate delta st
+
+                ToggleControls ->
+                    { st | controls = not st.controls }
     in
         ( st_, Cmd.none )
 
@@ -367,6 +375,11 @@ zoomTo zoom st =
     { st
         | md = zoomMandelbrotDomain zoom st.md
     }
+
+
+stopSplashImmediately : Model -> Model
+stopSplashImmediately st =
+    { st | splashScreenAlpha = Nothing }
 
 
 disablePreview : Model -> Model
@@ -454,7 +467,7 @@ getBaseColor z r_range =
 
 
 animate : Time -> Model -> Model
-animate dt st =
+animate dt =
     let
         updateAge st =
             let
@@ -469,8 +482,25 @@ animate dt st =
                     t.ttl > t.age
             in
                 { st | traces = List.filter isAlive st.traces }
+
+        fadeSplashscreen st =
+            let
+                fade x =
+                    x - inSeconds dt * splashScreenFadeSpeed
+
+                removeSplash x =
+                    if x < epsilon then
+                        Nothing
+                    else
+                        Just x
+
+                newAlpha =
+                    Maybe.map fade st.splashScreenAlpha
+                        |> Maybe.andThen removeSplash
+            in
+                { st | splashScreenAlpha = newAlpha }
     in
-        removeOld (updateAge st)
+        fadeSplashscreen >> updateAge >> removeOld
 
 
 
@@ -479,78 +509,167 @@ animate dt st =
 
 view : Model -> Html.Html Msg
 view st =
-    Html.div []
-        [ Html.div
+    Html.div [] <|
+        splashScreenView st <|
+            [ viewZoomControls st
+            , Element.toHtml <|
+                let
+                    diagrams =
+                        collage st.ds.screen_w
+                            st.ds.screen_h
+                            (renderPreview st ++ renderSelection st)
+
+                    --show st
+                    minScreenRange =
+                        if st.ds.screen_w < st.ds.screen_h then
+                            st.ds.screen_w_range
+                        else
+                            st.ds.screen_h_range
+
+                    domainCircle =
+                        collage st.ds.screen_w
+                            st.ds.screen_h
+                            [ filled black <|
+                                circle <|
+                                    scale ( 0, 1 / st.md.zoom ) minScreenRange 1.0
+                            ]
+                in
+                    layers
+                        [ domainCircle
+                        , diagrams
+                        ]
+            ]
+
+
+splashScreenView : Model -> List (Html.Html a) -> List (Html.Html a)
+splashScreenView st v =
+    case st.splashScreenAlpha of
+        Nothing ->
+            v
+
+        Just alpha ->
+            let
+                f =
+                    0.66
+
+                px x =
+                    toString (round x) ++ "px"
+
+                l =
+                    px (toFloat st.ds.screen_w * (1 - f) * 0.5)
+
+                t =
+                    px (toFloat st.ds.screen_h * (1 - f) * 0.5)
+
+                w =
+                    px (toFloat st.ds.screen_w * f)
+
+                h =
+                    px (toFloat st.ds.screen_h * f)
+            in
+                (Html.div
+                    [ Html.Attributes.style
+                        [ ( "position", "absolute" )
+                        , ( "z-index", "3" )
+                        , ( "width", w )
+                        , ( "left", l )
+                        , ( "top", t )
+                        , ( "height", h )
+                        , ( "opacity", toString alpha )
+                        ]
+                    ]
+                    [ Html.div
+                        [ Html.Attributes.style
+                            [ ( "display", "table-cell" )
+                            , ( "vertical-align", "middle" )
+                            , ( "text-align", "center" )
+                            , ( "text-shadow", "2px 2px #FF0000" )
+                            , ( "width", w )
+                            , ( "height", h )
+                            , ( "line-height", "normal" )
+                            , ( "color", "yellow" )
+                            , ( "font-family", "\"Times New Roman\", Times, serif" )
+                            , ( "font-size", "3em" )
+                            ]
+                        ]
+                        [ Html.text """Move the mouse over the black circle,
+                        then press and hold the mouse button, move around and
+                        release the button...""" ]
+                    ]
+                )
+                    :: v
+
+
+viewZoomControls : Model -> Html.Html Msg
+viewZoomControls st =
+    let
+        controlsButton =
+            Html.button
+                [ Html.Events.onClick ToggleControls ]
+                [ Html.text
+                    (if st.controls then
+                        "Hide Controls"
+                     else
+                        "Show Controls"
+                    )
+                ]
+    in
+        Html.div
             [ Html.Attributes.style
-                [ ( "position", "absolute" )
+                [ ( "position", "fixed" )
                 , ( "color", "gray" )
                 , ( "z-index", "2" )
+                , ( "padding", "0.5em" )
+                , ( "background-color", "white" )
                 ]
             ]
-            [ Html.table []
-                [ Html.tr []
-                    [ Html.td []
-                        [ Html.text "Total Points" ]
-                    , Html.td
-                        []
-                        [ Html.text
-                            (toString (totalPoints st)
-                                ++ "/"
-                                ++ toString maxPoints
-                            )
+            [ if st.controls then
+                Html.table [ Html.Attributes.style [ ( "width", "25%" ) ] ]
+                    [ Html.tr []
+                        [ Html.td [ Html.Attributes.colspan 2 ]
+                            [ Html.text "Total Points" ]
+                        , Html.td
+                            []
+                            [ Html.text
+                                (toString (totalPoints st)
+                                    ++ "/"
+                                    ++ toString maxPoints
+                                )
+                            ]
+                        ]
+                    , Html.tr []
+                        [ Html.td [ Html.Attributes.colspan 2 ]
+                            [ Html.text " Time till next cleanup" ]
+                        , Html.td
+                            []
+                            [ Html.text
+                                (toString (round (timeToNextTraceDeath st)))
+                            ]
+                        ]
+                    , Html.tr []
+                        [ Html.td []
+                            [ Html.button [ Html.Events.onClick ZoomIn ]
+                                [ Html.text "+" ]
+                            ]
+                        , Html.td []
+                            [ Html.button [ Html.Events.onClick ZoomReset ]
+                                [ Html.text (toString (round (st.md.zoom * 1000))) ]
+                            ]
+                        , Html.td []
+                            [ Html.button
+                                [ Html.Events.onClick ZoomOut ]
+                                [ Html.text "-" ]
+                            ]
+                        ]
+                    , Html.tr []
+                        [ Html.td
+                            [ Html.Attributes.colspan 3 ]
+                            [ controlsButton ]
                         ]
                     ]
-                , Html.tr []
-                    [ Html.td []
-                        [ Html.text " Time till next cleanup" ]
-                    , Html.td
-                        []
-                        [ Html.text
-                            (toString (round (timeToNextTraceDeath st)))
-                        ]
-                    ]
-                , Html.tr []
-                    [ Html.td []
-                        [ Html.text "Zoom" ]
-                    , Html.td
-                        []
-                        [ Html.text (toString st.md.zoom)
-                        ]
-                    ]
-                ]
-            , Html.div []
-                [ Html.button [ Html.Events.onClick ZoomIn ] [ Html.text "+" ]
-                , Html.button [ Html.Events.onClick ZoomReset ] [ Html.text "1.0" ]
-                , Html.button [ Html.Events.onClick ZoomOut ] [ Html.text "-" ]
-                ]
+              else
+                controlsButton
             ]
-        , Element.toHtml <|
-            let
-                diagrams =
-                    collage st.ds.screen_w
-                        st.ds.screen_h
-                        (renderPreview st ++ renderSelection st)
-
-                --show st
-                minScreenRange =
-                    if st.ds.screen_w < st.ds.screen_h then
-                        st.ds.screen_w_range
-                    else
-                        st.ds.screen_h_range
-
-                domainCircle =
-                    collage st.ds.screen_w
-                        st.ds.screen_h
-                        [ filled black <|
-                            circle <|
-                                scale ( 0, 1 / st.md.zoom ) minScreenRange 1.0
-                        ]
-            in
-                layers
-                    [ domainCircle
-                    , diagrams
-                    ]
-        ]
 
 
 renderPreview : Model -> List Form
@@ -562,7 +681,10 @@ renderPreview st =
         Just p ->
             let
                 lineStyle =
-                    dashed (Color.hsla p.baseColor 0.7 0.7 0.5)
+                    if p.orbital.inside then
+                        dotted (Color.hsla p.baseColor 0.7 0.7 0.5)
+                    else
+                        dashed (Color.hsla p.baseColor 0.5 0.7 0.5)
             in
                 [ traced lineStyle <|
                     path <|
@@ -770,6 +892,11 @@ subscriptions _ =
 -- DEFAULTS
 
 
+defaultZoom : Float
+defaultZoom =
+    1.375
+
+
 liveTimeFactorInside : Float
 liveTimeFactorInside =
     2 / velocity
@@ -798,6 +925,16 @@ maxPoints =
 velocity : Float
 velocity =
     1.8 / second
+
+
+splashScreenFadeSpeed : Float
+splashScreenFadeSpeed =
+    0.2
+
+
+epsilon : Float
+epsilon =
+    0.0001
 
 
 
